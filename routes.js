@@ -3,14 +3,6 @@ const user = require("./model");
 const Schedule = require("./model2");
 
 router.post("/adduser", async (req, res) => {
-  // user service demand time
-  // const servicefrom = new Date("October 15, 2021 05:33:32");
-  // const serviceto = new Date("October 15, 2021 05:34:32");
-  // const datenow = new Date();
-  // const time1 = serviceto.getTime();
-  // const time2 = datenow.getTime();
-  // const diff = time1 - time2;
-  // console.log(diff);
 
   try {
     const { name, email } = req.body;
@@ -144,7 +136,26 @@ router.get("/get/availableusers", async (req, res) => {
       }
     });
 
-    res.status(200).json({ users: availableusers });
+    var filtered = availableusers.filter((el)=> {
+      if (!this[el.userId]) {
+        this[el.userId] = true;
+        return true;
+      }
+      return false;
+    }, Object.create(null));
+    console.log(filtered);
+    // console.log(typeof availableusers);
+    // console.log(availableusers)
+
+    const userNames = await Promise.all( filtered.map(async(schdule) => {
+      const foundUser = await user.findOne({_id:schdule.userId});
+      return foundUser
+    }));
+
+    console.log("...")
+    console.log(userNames);
+
+    res.status(200).json({ users: filtered });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
