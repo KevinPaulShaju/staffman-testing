@@ -3,13 +3,12 @@ const user = require("./model");
 const Schedule = require("./model2");
 
 router.post("/adduser", async (req, res) => {
-
   try {
-    const { name, email } = req.body;
-    if (!name || !email) {
+    const { name, email, job } = req.body;
+    if (!name || !email || !job) {
       return res.status(402).json({ message: "fill all fields" });
     }
-    const newuser = new user({ name, email });
+    const newuser = new user({ name, email, job });
     const savedUser = await newuser.save();
     res.status(200).json({ message: "success", user: savedUser });
   } catch (error) {
@@ -100,9 +99,9 @@ router.post("/addschedule/:userId", async (req, res) => {
   }
 });
 
-router.get("/get/availableusers", async (req, res) => {
-  const { from, to } = req.body;
-  if (!from || !to) {
+router.get("/get/availableSchedules", async (req, res) => {
+  const { from, to, job } = req.body;
+  if (!from || !to || !job) {
     return res.status(404).json({ message: "fillup all fields" });
   }
 
@@ -122,12 +121,15 @@ router.get("/get/availableusers", async (req, res) => {
   console.log(todateformat, fromdateformat);
 
   try {
-    const schedules = await Schedule.find();
+    const schedules = await Schedule.find({});
+    // console.log(schedules);
+    // console.log("....");
+    let filteredSchedules;
 
-    const availableusers = schedules.filter((schedule) => {
+    const availableSchedules = schedules.filter((schedule) => {
       const to = new Date(schedule.to);
       const from = new Date(schedule.from);
-      console.log(to, from);
+      // console.log(to, from);
       if (
         (to < servicefrom || to > serviceto) &&
         (from < servicefrom || from > serviceto)
@@ -136,26 +138,35 @@ router.get("/get/availableusers", async (req, res) => {
       }
     });
 
-    var filtered = availableusers.filter((el)=> {
+    // console.log(availableSchedules)
+    // console.log("__________");
+
+    var filtered = availableSchedules.filter(function (el) {
       if (!this[el.userId]) {
         this[el.userId] = true;
         return true;
       }
       return false;
     }, Object.create(null));
-    console.log(filtered);
-    // console.log(typeof availableusers);
-    // console.log(availableusers)
 
-    const userNames = await Promise.all( filtered.map(async(schdule) => {
-      const foundUser = await user.findOne({_id:schdule.userId});
-      return foundUser
-    }));
+    // console.log(filtered);
 
-    console.log("...")
-    console.log(userNames);
+    const userNames = await Promise.all(
+      filtered.map(async (schdule) => {
+        const foundUser = await user.findOne({ _id: schdule.userId });
+        return foundUser;
+      })
+    );
 
-    res.status(200).json({ users: filtered });
+    // console.log(userNames);
+
+    const userByJob = userNames.filter((user) => {
+      return user.job == req.body.job;
+    });
+
+    // console.log(userByJob);
+
+    res.status(200).json({ users: userByJob });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
