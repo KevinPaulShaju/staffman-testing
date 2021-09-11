@@ -128,7 +128,6 @@ router.get("/get/availableSchedules", async (req, res) => {
       const to = new Date(schedule.to);
       const from = new Date(schedule.from);
 
-      console.log(from, to);
 
       if (
         (Date.parse(from) < Date.parse(fromdateformat) &&
@@ -136,10 +135,11 @@ router.get("/get/availableSchedules", async (req, res) => {
         (Date.parse(from) > Date.parse(todateformat) &&
           Date.parse(to) > Date.parse(todateformat))
       ) {
-        console.log(true);
+        // console.log(true);
         return schedule;
       } else {
-        return console.log(false);
+        // return console.log(false);
+        return false
       }
     });
 
@@ -167,10 +167,6 @@ router.get("/get/availableSchedules", async (req, res) => {
       return unavailschedule.userId.toString();
     });
 
-    console.log(availableIds);
-    console.log(availableIds.length);
-    console.log(unavailableIds);
-    console.log(unavailableIds.length);
 
     var filteredIds = availableIds.filter(function (el) {
       if (!this[el]) {
@@ -180,37 +176,81 @@ router.get("/get/availableSchedules", async (req, res) => {
       return false;
     }, Object.create(null));
 
-    console.log(filteredIds);
     var availableworkersIds = filteredIds.filter(function (val) {
       return unavailableIds.indexOf(val) == -1;
     });
 
-    console.log(availableworkersIds);
-
-    console.log(availableSchedules.length);
 
     const userObjIds = availableworkersIds.map((id) => {
       return mongoose.Types.ObjectId(id);
     });
 
-    console.log(userObjIds);
-
     const userNames = await Promise.all(
       userObjIds.map(async (id) => {
-        const foundUser = await user.findOne({ _id: id });
+        const foundUser = await user.findOne({ _id:id});
         return foundUser;
       })
     );
 
-    // console.log(userNames);
-
     const userByJob = userNames.filter((user) => {
       return user.job == req.body.job;
     });
+  
+    const userSchedules = await Promise.all(
+      userByJob.map(async (user) => {
+        const findSchedules =  await Schedule.find({userId:user.id});
+        if(findSchedules.length === 0) {
+          return "No Schedule For This User"
+        }
+        return {userDetails:user,schedule:findSchedules}
+      })
+    )
 
-    // console.log(userByJob);
 
-    res.status(200).json({ users: userByJob });
+    const beforeAfterSchedules = await Promise.all( userSchedules.map(async (schedule) => {
+     
+      var scheduleBefore = [],scheduleAfter = [];
+
+      const differenceTime = schedule.schedule.map(sc => {
+        const from = sc.from.getTime()
+        const to = sc.to.getTime()
+
+        if(to<fromdateformat.getTime()){
+          const diff = fromdateformat.getTime() - to;
+          scheduleBefore.push({userId:sc.userId,scheduleId:sc.id,timeDiff:diff})
+        }
+
+        if(from>todateformat.getTime()){
+          const diff = from-todateformat.getTime()
+          scheduleAfter.push({userId:sc.userId,scheduleId:sc.id,timeDiff:diff})
+        }
+      
+        const timeDiff = {scheduleId:sc.id,userId:sc.userId}
+        return timeDiff
+      })
+
+  
+      var minBef,minAft,before,after
+    
+      if(scheduleBefore.length>0){
+        minBef = scheduleBefore.reduce(function(prev, curr) {
+          return prev.timeDiff < curr.timeDiff ? prev : curr;
+        });
+        before = await Schedule.findOne({_id:minBef.scheduleId,userId:minBef.userId});
+      }
+      
+
+      if(scheduleAfter.length > 0) {
+        minAft = scheduleAfter.reduce(function(prev, curr) {
+          return prev.timeDiff < curr.timeDiff ? prev : curr;
+        });
+        after = await Schedule.findOne({_id:minAft.scheduleId,userId:minAft.userId});
+      }
+     
+      return {user:schedule,Before:before,After:after}
+    }))
+
+    res.status(200).json({ avaliableUser: beforeAfterSchedules });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
