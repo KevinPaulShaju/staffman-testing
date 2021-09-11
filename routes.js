@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const user = require("./model");
 const Schedule = require("./model2");
+const mongoose = require("mongoose");
 
 router.post("/adduser", async (req, res) => {
   try {
@@ -110,50 +111,93 @@ router.get("/get/availableSchedules", async (req, res) => {
   const fromoffsetinmillis = fromoffset * 60 * 1000;
   const fromdateinmillis = servicefrom.getTime();
   const fromlocalinmillis = fromdateinmillis - fromoffsetinmillis;
-  const fromdateformat = new Date(fromlocalinmillis).toISOString();
+  const fromdateformat = new Date(fromlocalinmillis);
 
   const serviceto = new Date(to);
   const tooffset = serviceto.getTimezoneOffset();
   const tooffsetinmillis = tooffset * 60 * 1000;
   const todateinmillis = serviceto.getTime();
   const tolocalinmillis = todateinmillis - tooffsetinmillis;
-  const todateformat = new Date(tolocalinmillis).toISOString();
-  console.log(todateformat, fromdateformat);
+  const todateformat = new Date(tolocalinmillis);
+  console.log("date formats", fromdateformat, todateformat);
 
   try {
     const schedules = await Schedule.find({});
-    // console.log(schedules);
-    // console.log("....");
-    let filteredSchedules;
 
-    const availableSchedules = schedules.filter((schedule) => {
+    var availableSchedules = schedules.filter((schedule) => {
       const to = new Date(schedule.to);
       const from = new Date(schedule.from);
-      // console.log(to, from);
+
+      console.log(from, to);
+
       if (
-        (to < servicefrom || to > serviceto) &&
-        (from < servicefrom || from > serviceto)
+        (Date.parse(from) < Date.parse(fromdateformat) &&
+          Date.parse(to) < Date.parse(fromdateformat)) ||
+        (Date.parse(from) > Date.parse(todateformat) &&
+          Date.parse(to) > Date.parse(todateformat))
+      ) {
+        console.log(true);
+        return schedule;
+      } else {
+        return console.log(false);
+      }
+    });
+
+    var unavailableSchedules = schedules.filter((schedule) => {
+      const from = new Date(schedule.from);
+      const to = new Date(schedule.to);
+
+      if (
+        (Date.parse(from) > Date.parse(fromdateformat) &&
+          Date.parse(from) < Date.parse(todateformat)) ||
+        (Date.parse(to) > Date.parse(fromdateformat) &&
+          Date.parse(to) < Date.parse(todateformat)) ||
+        (Date.parse(from) < Date.parse(fromdateformat) &&
+          Date.parse(to) > Date.parse(todateformat))
       ) {
         return schedule;
       }
     });
 
-    // console.log(availableSchedules)
-    // console.log("__________");
+    var availableIds = availableSchedules.map((availschedule) => {
+      return availschedule.userId.toString();
+    });
 
-    var filtered = availableSchedules.filter(function (el) {
-      if (!this[el.userId]) {
-        this[el.userId] = true;
+    var unavailableIds = unavailableSchedules.map((unavailschedule) => {
+      return unavailschedule.userId.toString();
+    });
+
+    console.log(availableIds);
+    console.log(availableIds.length);
+    console.log(unavailableIds);
+    console.log(unavailableIds.length);
+
+    var filteredIds = availableIds.filter(function (el) {
+      if (!this[el]) {
+        this[el] = true;
         return true;
       }
       return false;
     }, Object.create(null));
 
-    // console.log(filtered);
+    console.log(filteredIds);
+    var availableworkersIds = filteredIds.filter(function (val) {
+      return unavailableIds.indexOf(val) == -1;
+    });
+
+    console.log(availableworkersIds);
+
+    console.log(availableSchedules.length);
+
+    const userObjIds = availableworkersIds.map((id) => {
+      return mongoose.Types.ObjectId(id);
+    });
+
+    console.log(userObjIds);
 
     const userNames = await Promise.all(
-      filtered.map(async (schdule) => {
-        const foundUser = await user.findOne({ _id: schdule.userId });
+      userObjIds.map(async (id) => {
+        const foundUser = await user.findOne({ _id: id });
         return foundUser;
       })
     );
