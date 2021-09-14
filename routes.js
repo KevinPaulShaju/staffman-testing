@@ -152,8 +152,8 @@ router.get("/get/availableSchedules", async (req, res) => {
           Date.parse(from) < Date.parse(todateformat)) ||
         (Date.parse(to) > Date.parse(fromdateformat) &&
           Date.parse(to) < Date.parse(todateformat)) ||
-        (Date.parse(from) < Date.parse(fromdateformat) &&
-          Date.parse(to) > Date.parse(todateformat))
+        (Date.parse(from) <= Date.parse(fromdateformat) &&
+          Date.parse(to) >= Date.parse(todateformat))
       ) {
         return schedule;
       }
@@ -166,6 +166,8 @@ router.get("/get/availableSchedules", async (req, res) => {
     var unavailableIds = unavailableSchedules.map((unavailschedule) => {
       return unavailschedule.userId.toString();
     });
+
+    console.log(unavailableIds);
 
 
     var filteredIds = availableIds.filter(function (el) {
