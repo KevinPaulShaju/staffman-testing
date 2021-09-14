@@ -159,6 +159,7 @@ router.get("/get/availableSchedules", async (req, res) => {
       }
     });
 
+    
     var availableIds = availableSchedules.map((availschedule) => {
       return availschedule.userId.toString();
     });
