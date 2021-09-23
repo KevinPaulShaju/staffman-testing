@@ -3,12 +3,14 @@ const app = express();
 const dotenv = require("dotenv");
 const connectDB = require("./db");
 const routes = require("./routes");
+
 // env config
 dotenv.config({ path: "config/config.env" });
 
 // body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use("/uploads", express.static("uploads"));
 
 // connecting to db
 connectDB();
@@ -19,7 +21,7 @@ const offsetinmillis = offset * 60 * 1000;
 const dateinmillis = time.getTime();
 const localinmillis = dateinmillis - offsetinmillis;
 const localdate = new Date(dateinmillis).toISOString();
-console.log(localdate)
+console.log(localdate);
 
 console.log(offset);
 

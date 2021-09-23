@@ -2,6 +2,7 @@ const router = require("express").Router();
 const user = require("./model");
 const Schedule = require("./model2");
 const mongoose = require("mongoose");
+const axios = require("axios");
 
 router.post("/adduser", async (req, res) => {
   try {
@@ -102,7 +103,8 @@ router.post("/addschedule/:userId", async (req, res) => {
 
 router.get("/get/availableSchedules", async (req, res) => {
   const { from, to, job } = req.body;
-  if (!from || !to || !job) {
+  var { userLocation } = req.body;
+  if (!from || !to || !job || !userLocation) {
     return res.status(404).json({ message: "fillup all fields" });
   }
 
@@ -128,18 +130,15 @@ router.get("/get/availableSchedules", async (req, res) => {
       const to = new Date(schedule.to);
       const from = new Date(schedule.from);
 
-
       if (
         (Date.parse(from) < Date.parse(fromdateformat) &&
           Date.parse(to) < Date.parse(fromdateformat)) ||
         (Date.parse(from) > Date.parse(todateformat) &&
           Date.parse(to) > Date.parse(todateformat))
       ) {
-        // console.log(true);
         return schedule;
       } else {
-        // return console.log(false);
-        return false
+        return false;
       }
     });
 
@@ -159,7 +158,6 @@ router.get("/get/availableSchedules", async (req, res) => {
       }
     });
 
-    
     var availableIds = availableSchedules.map((availschedule) => {
       return availschedule.userId.toString();
     });
@@ -167,9 +165,6 @@ router.get("/get/availableSchedules", async (req, res) => {
     var unavailableIds = unavailableSchedules.map((unavailschedule) => {
       return unavailschedule.userId.toString();
     });
-
-    console.log(unavailableIds);
-
 
     var filteredIds = availableIds.filter(function (el) {
       if (!this[el]) {
@@ -183,14 +178,13 @@ router.get("/get/availableSchedules", async (req, res) => {
       return unavailableIds.indexOf(val) == -1;
     });
 
-
     const userObjIds = availableworkersIds.map((id) => {
       return mongoose.Types.ObjectId(id);
     });
 
     const userNames = await Promise.all(
       userObjIds.map(async (id) => {
-        const foundUser = await user.findOne({ _id:id});
+        const foundUser = await user.findOne({ _id: id });
         return foundUser;
       })
     );
@@ -198,60 +192,117 @@ router.get("/get/availableSchedules", async (req, res) => {
     const userByJob = userNames.filter((user) => {
       return user.job == req.body.job;
     });
-  
+
     const userSchedules = await Promise.all(
       userByJob.map(async (user) => {
-        const findSchedules =  await Schedule.find({userId:user.id});
-        if(findSchedules.length === 0) {
-          return "No Schedule For This User"
+        const findSchedules = await Schedule.find({ userId: user.id });
+        if (findSchedules.length === 0) {
+          return "No Schedule For This User";
         }
-        return {userDetails:user,schedule:findSchedules}
+        return { userDetails: user, schedule: findSchedules };
       })
-    )
+    );
 
+    var beforeAfterSchedules = await Promise.all(
+      userSchedules.map(async (schedule) => {
+        var scheduleBefore = [],
+          scheduleAfter = [];
 
-    const beforeAfterSchedules = await Promise.all( userSchedules.map(async (schedule) => {
-     
-      var scheduleBefore = [],scheduleAfter = [];
+        const differenceTime = schedule.schedule.map((sc) => {
+          const from = sc.from.getTime();
+          const to = sc.to.getTime();
 
-      const differenceTime = schedule.schedule.map(sc => {
-        const from = sc.from.getTime()
-        const to = sc.to.getTime()
+          if (to < fromdateformat.getTime()) {
+            const diff = fromdateformat.getTime() - to;
+            scheduleBefore.push({
+              userId: sc.userId,
+              scheduleId: sc.id,
+              timeDiff: diff,
+            });
+          }
 
-        if(to<fromdateformat.getTime()){
-          const diff = fromdateformat.getTime() - to;
-          scheduleBefore.push({userId:sc.userId,scheduleId:sc.id,timeDiff:diff})
+          if (from > todateformat.getTime()) {
+            const diff = from - todateformat.getTime();
+            scheduleAfter.push({
+              userId: sc.userId,
+              scheduleId: sc.id,
+              timeDiff: diff,
+            });
+          }
+
+          const timeDiff = { scheduleId: sc.id, userId: sc.userId };
+          return timeDiff;
+        });
+
+        delete schedule.schedule;
+        let minBef, minAft, before, after, fullBefore, fullAfter;
+
+        if (scheduleBefore.length > 0) {
+          minBef = scheduleBefore.reduce(function (prev, curr) {
+            return prev.timeDiff < curr.timeDiff ? prev : curr;
+          });
+          before = await Schedule.findOne({
+            _id: minBef.scheduleId,
+            userId: minBef.userId,
+          });
+
+          const userlat = userLocation[0];
+          const userlng = userLocation[1];
+          const lat = before.location[0];
+          const lng = before.location[1];
+          const dist2 = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat}%2C${lng}&destinations=${userlat}%2C${userlng}&key=AIzaSyD9KatRTU8LVjtXvgL5JHU2PduZMlZd2n4`;
+
+          const response = await axios({
+            method: "get",
+            url: dist2,
+            json: true,
+          });
+
+          if (response.status !== 200) {
+            return res.status(500).json({ error: error.message });
+          }
+          var duration = response.data.rows[0].elements[0].duration.text;
+          var distance = response.data.rows[0].elements[0].distance.text;
+          var carerLocation = response.data.origin_addresses;
+
+          var details = { distance, duration };
+
+          fullBefore = { before, details, carerLocation };
         }
 
-        if(from>todateformat.getTime()){
-          const diff = from-todateformat.getTime()
-          scheduleAfter.push({userId:sc.userId,scheduleId:sc.id,timeDiff:diff})
+        if (scheduleAfter.length > 0) {
+          minAft = scheduleAfter.reduce(function (prev, curr) {
+            return prev.timeDiff < curr.timeDiff ? prev : curr;
+          });
+          after = await Schedule.findOne({
+            _id: minAft.scheduleId,
+            userId: minAft.userId,
+          });
+          const userlat = userLocation[0];
+          const userlng = userLocation[1];
+          const lat = after.location[0];
+          const lng = after.location[1];
+          const dist2 = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat}%2C${lng}&destinations=${userlat}%2C${userlng}&key=AIzaSyD9KatRTU8LVjtXvgL5JHU2PduZMlZd2n4`;
+
+          const response = await axios({
+            method: "get",
+            url: dist2,
+            json: true,
+          });
+
+          if (response.status !== 200) {
+            return res.status(500).json({ error: error.message });
+          }
+          var duration = response.data.rows[0].elements[0].duration.text;
+          var distance = response.data.rows[0].elements[0].distance.text;
+          var carerLocation = response.data.origin_addresses;
+          var details = { distance, duration };
+          fullAfter = { after, details, carerLocation };
         }
-      
-        const timeDiff = {scheduleId:sc.id,userId:sc.userId}
-        return timeDiff
+
+        return { user: schedule, Before: fullBefore, After: fullAfter };
       })
-
-  
-      var minBef,minAft,before,after
-    
-      if(scheduleBefore.length>0){
-        minBef = scheduleBefore.reduce(function(prev, curr) {
-          return prev.timeDiff < curr.timeDiff ? prev : curr;
-        });
-        before = await Schedule.findOne({_id:minBef.scheduleId,userId:minBef.userId});
-      }
-      
-
-      if(scheduleAfter.length > 0) {
-        minAft = scheduleAfter.reduce(function(prev, curr) {
-          return prev.timeDiff < curr.timeDiff ? prev : curr;
-        });
-        after = await Schedule.findOne({_id:minAft.scheduleId,userId:minAft.userId});
-      }
-     
-      return {user:schedule,Before:before,After:after}
-    }))
+    );
 
     res.status(200).json({ avaliableUser: beforeAfterSchedules });
   } catch (error) {
